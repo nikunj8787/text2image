@@ -1,16 +1,12 @@
 import streamlit as st
 import requests
 import json
-import base64
-from datetime import datetime, timedelta
-import speech_recognition as sr
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+from datetime import datetime
 import tempfile
 import os
 
 # Configuration
-DEEPSEEK_API_KEY = "sk-54bd3323c4d14bf08b941f0bff7a47d5"
+DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]  # Read from Streamlit secrets
 DEEPSEEK_API_URL = "https://api.deepseek.ai/v1/generate"
 DAILY_LIMIT = 50
 IMAGE_SIZES = ["256x256", "512x512", "1024x1024"]
@@ -76,31 +72,6 @@ def generate_image(prompt, size="512x512"):
         st.error(f"Network error: {str(e)}")
         return None
 
-def transcribe_audio(audio_file, language="en"):
-    """Transcribe audio file to text using speech recognition."""
-    recognizer = sr.Recognizer()
-    
-    try:
-        with sr.AudioFile(audio_file) as source:
-            audio = recognizer.record(source)
-            
-        # Map language codes for speech recognition
-        lang_map = {
-            "gujarati": "gu-IN",
-            "hindi": "hi-IN", 
-            "english": "en-US"
-        }
-        
-        text = recognizer.recognize_google(audio, language=lang_map.get(language, "en-US"))
-        return text
-        
-    except sr.UnknownValueError:
-        st.error("Could not understand the audio. Please try again.")
-        return None
-    except sr.RequestError as e:
-        st.error(f"Speech recognition error: {str(e)}")
-        return None
-
 def add_to_gallery(image_url, prompt):
     """Add generated image to gallery, maintaining last 5 images."""
     gallery_item = {
@@ -133,12 +104,9 @@ def display_image_with_download(image_url, prompt, key_suffix=""):
 
 def google_oauth_login():
     """Handle Google OAuth authentication (simplified implementation)."""
-    # This is a simplified placeholder - full OAuth implementation would require
-    # proper Google Cloud Console setup and callback handling
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("🔐 Login with Google", use_container_width=True):
-            # Placeholder for OAuth implementation
             st.session_state.authenticated = True
             st.session_state.user_email = "family@example.com"
             st.success("Successfully logged in!")
@@ -187,7 +155,7 @@ def main():
     init_session_state()
     
     # Header
-    st.markdown('<div class="main-header"><h1>🎨 Family Image Generator</h1><p>Convert text or voice to amazing images!</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header"><h1>🎨 Family Image Generator</h1><p>Convert text to amazing images!</p></div>', unsafe_allow_html=True)
     
     # Authentication section
     if not st.session_state.authenticated:
@@ -236,48 +204,39 @@ def main():
                 st.warning("Please enter a text prompt.")
     
     with tab2:
-        st.markdown("### Record your voice prompt")
+        st.markdown("### Voice Input (Browser-based)")
+        st.info("🎙️ Voice recording requires browser permissions. Click the microphone button below to record.")
         
-        col1, col2 = st.columns([2, 1])
+        # Browser-based voice recording using Streamlit's experimental audio input
+        try:
+            audio_bytes = st.experimental_audio_input("Record your voice prompt:")
+            if audio_bytes:
+                st.audio(audio_bytes, format="audio/wav")
+                st.warning("⚠️ Voice-to-text transcription requires additional setup. For now, please use the text input tab.")
+        except AttributeError:
+            st.info("📝 Voice recording is not available in this deployment. Please use the Text Prompt tab instead.")
+            
+        # Alternative: Manual text input for voice simulation
+        st.markdown("### Alternative: Type your voice prompt")
+        col1, col2 = st.columns([3, 1])
         with col1:
-            language = st.selectbox("Language:", ["english", "hindi", "gujarati"])
+            voice_prompt = st.text_area(
+                "Enter text as if speaking:",
+                placeholder="Type what you would say... (e.g., 'Create a picture of a cat playing in the garden')",
+                height=80
+            )
         with col2:
             image_size_voice = st.selectbox("Size:", IMAGE_SIZES, index=1, key="voice_size")
         
-        # Audio recording interface
-        st.markdown("#### 🎤 Voice Recording")
-        audio_file = st.file_uploader("Upload audio file (WAV format):", type=['wav'])
-        
-        if audio_file is not None:
-            st.audio(audio_file, format='audio/wav')
-            
-            if st.button("🔄 Transcribe & Generate", use_container_width=True, type="primary"):
-                # Save uploaded file temporarily
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
-                    tmp_file.write(audio_file.getvalue())
-                    tmp_file_path = tmp_file.name
-                
-                try:
-                    # Transcribe audio
-                    with st.spinner("Transcribing audio..."):
-                        transcribed_text = transcribe_audio(tmp_file_path, language)
-                    
-                    if transcribed_text:
-                        st.success(f"Transcribed: {transcribed_text}")
-                        
-                        # Generate image from transcribed text
-                        image_url = generate_image(transcribed_text, image_size_voice)
-                        if image_url:
-                            add_to_gallery(image_url, transcribed_text)
-                            st.success("Image generated from voice!")
-                            display_image_with_download(image_url, transcribed_text, "voice")
-                
-                finally:
-                    # Clean up temporary file
-                    if os.path.exists(tmp_file_path):
-                        os.unlink(tmp_file_path)
-        
-        st.info("💡 Tip: Record clear audio in a quiet environment for best results.")
+        if st.button("🎨 Generate from Voice Text", use_container_width=True, type="primary"):
+            if voice_prompt.strip():
+                image_url = generate_image(voice_prompt, image_size_voice)
+                if image_url:
+                    add_to_gallery(image_url, voice_prompt)
+                    st.success("Image generated from voice prompt!")
+                    display_image_with_download(image_url, voice_prompt, "voice")
+            else:
+                st.warning("Please enter a voice prompt.")
     
     with tab3:
         st.markdown("### 🖼️ Recent Images Gallery")
@@ -288,7 +247,7 @@ def main():
                     display_image_with_download(item['url'], item['prompt'], f"gallery_{i}")
                     st.caption(f"Generated: {item['timestamp']}")
         else:
-            st.info("No images generated yet. Create your first image in the Text or Voice tabs!")
+            st.info("No images generated yet. Create your first image in the Text Prompt tab!")
     
     # Footer
     st.markdown("---")
