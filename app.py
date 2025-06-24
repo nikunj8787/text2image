@@ -7,7 +7,7 @@ import os
 
 # Configuration
 DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]  # Read from Streamlit secrets
-DEEPSEEK_API_URL = "https://api.deepseek.ai/v1/generate"
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/generate"
 DAILY_LIMIT = 50
 IMAGE_SIZES = ["256x256", "512x512", "1024x1024"]
 
